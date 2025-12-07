@@ -1,13 +1,12 @@
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
 import './globals.css'
 import Navbar from '@/components/Navbar'
-
-const inter = Inter({ subsets: ['latin'] })
+import Footer from '@/components/Footer'
+import { Toaster } from 'sonner'
 
 export const metadata: Metadata = {
-  title: 'Skitt - Feature Flags & Experiments',
-  description: 'Manage feature flags and run experiments',
+  title: 'Skitt - Feature Flags & Experiments Platform',
+  description: 'Professional feature flag management and A/B testing platform',
 }
 
 export default function RootLayout({
@@ -17,13 +16,14 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={inter.className}>
+      <body className="antialiased flex flex-col min-h-screen">
         <Navbar />
-        <main className="min-h-screen bg-gray-50">
+        <main className="flex-1 bg-background">
           {children}
         </main>
+        <Footer />
+        <Toaster position="top-right" richColors />
       </body>
     </html>
   )
 }
-

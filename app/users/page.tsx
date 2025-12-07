@@ -1,16 +1,42 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { usersApi, User, CreateUserInput } from '@/lib/api';
-import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
-import UserModal from '@/components/UserModal';
+import { Button } from '@/components/ui/button';
+import { Plus, Pencil, Trash2 } from 'lucide-react';
+import {
+  useReactTable,
+  getCoreRowModel,
+  getPaginationRowModel,
+  getSortedRowModel,
+  getFilteredRowModel,
+  ColumnDef,
+  flexRender,
+} from '@tanstack/react-table';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Input } from '@/components/ui/input';
+import UserDialog from '@/components/UserDialog';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { toast } from 'sonner';
 
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; user: User | null }>({
+    open: false,
+    user: null,
+  });
+  const [globalFilter, setGlobalFilter] = useState('');
 
   useEffect(() => {
     fetchUsers();
@@ -24,6 +50,7 @@ export default function UsersPage() {
       setError(null);
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to load users');
+      toast.error('Failed to load users');
     } finally {
       setLoading(false);
     }
@@ -31,123 +58,240 @@ export default function UsersPage() {
 
   const handleCreate = () => {
     setEditingUser(null);
-    setIsModalOpen(true);
+    setIsDialogOpen(true);
   };
 
   const handleEdit = (user: User) => {
     setEditingUser(user);
-    setIsModalOpen(true);
+    setIsDialogOpen(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this user?')) {
-      return;
-    }
+  const handleDelete = async () => {
+    if (!deleteConfirm.user) return;
 
     try {
-      await usersApi.delete(id);
+      await usersApi.delete(deleteConfirm.user.id);
+      toast.success('User deleted successfully');
       await fetchUsers();
+      setDeleteConfirm({ open: false, user: null });
     } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to delete user');
+      toast.error(err.response?.data?.error || 'Failed to delete user');
     }
   };
 
-  const handleModalClose = () => {
-    setIsModalOpen(false);
+  const handleDialogClose = () => {
+    setIsDialogOpen(false);
     setEditingUser(null);
     fetchUsers();
   };
 
+  const columns = useMemo<ColumnDef<User>[]>(
+    () => [
+      {
+        accessorKey: 'name',
+        header: 'Name',
+        cell: ({ row }) => (
+          <div className="font-medium">{row.original.name || 'Unnamed User'}</div>
+        ),
+      },
+      {
+        accessorKey: 'email',
+        header: 'Email',
+        cell: ({ row }) => (
+          <div className="text-sm">{row.original.email || '-'}</div>
+        ),
+      },
+      {
+        accessorKey: 'user_id',
+        header: 'User ID',
+        cell: ({ row }) => (
+          <code className="text-xs bg-muted px-2 py-1 rounded">
+            {row.original.user_id.substring(0, 8)}...
+          </code>
+        ),
+      },
+      {
+        accessorKey: 'attributes',
+        header: 'Attributes',
+        cell: ({ row }) => (
+          <div className="text-sm text-muted-foreground">
+            {row.original.attributes
+              ? Object.keys(row.original.attributes).length > 0
+                ? `${Object.keys(row.original.attributes).length} attributes`
+                : '-'
+              : '-'}
+          </div>
+        ),
+      },
+      {
+        accessorKey: 'created_at',
+        header: 'Created',
+        cell: ({ row }) => (
+          <div className="text-sm text-muted-foreground">
+            {new Date(row.original.created_at).toLocaleDateString()}
+          </div>
+        ),
+      },
+      {
+        id: 'actions',
+        header: 'Actions',
+        cell: ({ row }) => (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleEdit(row.original)}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setDeleteConfirm({ open: true, user: row.original })}
+            >
+              <Trash2 className="h-4 w-4 text-destructive" />
+            </Button>
+          </div>
+        ),
+      },
+    ],
+    []
+  );
+
+  const table = useReactTable({
+    data: users,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    globalFilterFn: 'includesString',
+    state: {
+      globalFilter,
+    },
+    onGlobalFilterChange: setGlobalFilter,
+  });
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 text-black">
-      <div className="mb-8 flex justify-between items-center">
+    <div className="container mx-auto px-4 py-8 space-y-6">
+      <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Users</h1>
-          <p className="mt-2 text-gray-600">Manage your users</p>
+          <h1 className="text-3xl font-bold tracking-tight">Users</h1>
+          <p className="text-muted-foreground mt-2">Manage your users</p>
         </div>
-        <button
-          onClick={handleCreate}
-          className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-        >
-          <PlusIcon className="h-5 w-5 mr-2" />
+        <Button onClick={handleCreate}>
+          <Plus className="h-4 w-4 mr-2" />
           Create User
-        </button>
+        </Button>
       </div>
 
       {error && (
-        <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+        <div className="bg-destructive/10 border border-destructive text-destructive px-4 py-3 rounded-md">
           {error}
         </div>
       )}
 
-      <div className="bg-white shadow overflow-hidden sm:rounded-md">
-        {users.length === 0 ? (
-          <div className="px-6 py-8 text-center text-gray-500">
-            No users found. Create your first user to get started.
-          </div>
-        ) : (
-          <ul className="divide-y divide-gray-200">
-            {users.map((user) => (
-              <li key={user.id} className="px-6 py-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center">
-                      <h3 className="text-lg font-medium text-gray-900">
-                        {user.name || 'Unnamed User'}
-                      </h3>
-                    </div>
-                    <p className="mt-1 text-sm text-gray-500">ID: {user.user_id}</p>
-                    {user.email && (
-                      <p className="mt-1 text-sm text-gray-600">{user.email}</p>
-                    )}
-                    {user.attributes && Object.keys(user.attributes).length > 0 && (
-                      <p className="mt-1 text-xs text-gray-400">
-                        Attributes: {JSON.stringify(user.attributes)}
-                      </p>
-                    )}
-                    <p className="mt-1 text-xs text-gray-400">
-                      Created: {new Date(user.created_at).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() => handleEdit(user)}
-                      className="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-                    >
-                      <PencilIcon className="h-4 w-4 mr-1" />
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleDelete(user.id)}
-                      className="inline-flex items-center px-3 py-1.5 border border-red-300 rounded-md text-sm font-medium text-red-700 bg-white hover:bg-red-50"
-                    >
-                      <TrashIcon className="h-4 w-4 mr-1" />
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
+      <div className="flex items-center gap-4">
+        <Input
+          placeholder="Search users..."
+          value={globalFilter}
+          onChange={(e) => setGlobalFilter(e.target.value)}
+          className="max-w-sm"
+        />
       </div>
 
-      {isModalOpen && (
-        <UserModal
+      <div className="border rounded-lg">
+        <Table>
+          <TableHeader>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <TableHead key={header.id}>
+                    {header.isPlaceholder
+                      ? null
+                      : flexRender(header.column.columnDef.header, header.getContext())}
+                  </TableHead>
+                ))}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows?.length ? (
+              table.getRowModel().rows.map((row) => (
+                <TableRow key={row.id} data-state={row.getIsSelected() && 'selected'}>
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell key={cell.id}>
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={columns.length} className="h-24 text-center">
+                  No users found. Create your first user to get started.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-muted-foreground">
+          Showing {table.getState().pagination.pageIndex * table.getState().pagination.pageSize + 1} to{' '}
+          {Math.min(
+            (table.getState().pagination.pageIndex + 1) * table.getState().pagination.pageSize,
+            users.length
+          )}{' '}
+          of {users.length} users
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => table.previousPage()}
+            disabled={!table.getCanPreviousPage()}
+          >
+            Previous
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => table.nextPage()}
+            disabled={!table.getCanNextPage()}
+          >
+            Next
+          </Button>
+        </div>
+      </div>
+
+      {isDialogOpen && (
+        <UserDialog
           user={editingUser}
-          isOpen={isModalOpen}
-          onClose={handleModalClose}
+          isOpen={isDialogOpen}
+          onClose={handleDialogClose}
         />
       )}
+
+      <ConfirmDialog
+        open={deleteConfirm.open}
+        onOpenChange={(open) => setDeleteConfirm({ open, user: null })}
+        onConfirm={handleDelete}
+        title="Delete User"
+        description={`Are you sure you want to delete "${deleteConfirm.user?.name || 'this user'}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="destructive"
+      />
     </div>
   );
 }
-

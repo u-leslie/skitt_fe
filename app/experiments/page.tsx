@@ -1,10 +1,32 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { experimentsApi, featureFlagsApi, Experiment, FeatureFlag, CreateExperimentInput } from '@/lib/api';
-import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
-import ExperimentModal from '@/components/ExperimentModal';
+import { experimentsApi, featureFlagsApi, Experiment, FeatureFlag } from '@/lib/api';
+import { Button } from '@/components/ui/button';
+import { Plus, Pencil, Trash2, Eye } from 'lucide-react';
+import {
+  useReactTable,
+  getCoreRowModel,
+  getPaginationRowModel,
+  getSortedRowModel,
+  getFilteredRowModel,
+  ColumnDef,
+  flexRender,
+} from '@tanstack/react-table';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import ExperimentDialog from '@/components/ExperimentDialog';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { toast } from 'sonner';
 
 export default function ExperimentsPage() {
   const router = useRouter();
@@ -12,8 +34,13 @@ export default function ExperimentsPage() {
   const [flags, setFlags] = useState<FeatureFlag[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingExperiment, setEditingExperiment] = useState<Experiment | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; experiment: Experiment | null }>({
+    open: false,
+    experiment: null,
+  });
+  const [globalFilter, setGlobalFilter] = useState('');
 
   useEffect(() => {
     fetchData();
@@ -31,6 +58,7 @@ export default function ExperimentsPage() {
       setError(null);
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to load data');
+      toast.error('Failed to load experiments');
     } finally {
       setLoading(false);
     }
@@ -38,29 +66,29 @@ export default function ExperimentsPage() {
 
   const handleCreate = () => {
     setEditingExperiment(null);
-    setIsModalOpen(true);
+    setIsDialogOpen(true);
   };
 
   const handleEdit = (experiment: Experiment) => {
     setEditingExperiment(experiment);
-    setIsModalOpen(true);
+    setIsDialogOpen(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this experiment?')) {
-      return;
-    }
+  const handleDelete = async () => {
+    if (!deleteConfirm.experiment) return;
 
     try {
-      await experimentsApi.delete(id);
+      await experimentsApi.delete(deleteConfirm.experiment.id);
+      toast.success('Experiment deleted successfully');
       await fetchData();
+      setDeleteConfirm({ open: false, experiment: null });
     } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to delete experiment');
+      toast.error(err.response?.data?.error || 'Failed to delete experiment');
     }
   };
 
-  const handleModalClose = () => {
-    setIsModalOpen(false);
+  const handleDialogClose = () => {
+    setIsDialogOpen(false);
     setEditingExperiment(null);
     fetchData();
   };
@@ -73,119 +101,236 @@ export default function ExperimentsPage() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'running':
-        return 'bg-green-100 text-green-800';
+        return 'default';
       case 'paused':
-        return 'bg-yellow-100 text-yellow-800';
+        return 'secondary';
       case 'completed':
-        return 'bg-gray-100 text-gray-800';
+        return 'outline';
       default:
-        return 'bg-blue-100 text-blue-800';
+        return 'secondary';
     }
   };
+
+  const columns = useMemo<ColumnDef<Experiment>[]>(
+    () => [
+      {
+        accessorKey: 'name',
+        header: 'Name',
+        cell: ({ row }) => (
+          <div className="font-medium">{row.original.name}</div>
+        ),
+      },
+      {
+        accessorKey: 'flag_id',
+        header: 'Feature Flag',
+        cell: ({ row }) => (
+          <div className="text-sm">{getFlagName(row.original.flag_id)}</div>
+        ),
+      },
+      {
+        accessorKey: 'status',
+        header: 'Status',
+        cell: ({ row }) => (
+          <Badge variant={getStatusColor(row.original.status) as any}>
+            {row.original.status}
+          </Badge>
+        ),
+      },
+      {
+        accessorKey: 'variants',
+        header: 'Variants',
+        cell: ({ row }) => (
+          <div className="text-sm">
+            A: {row.original.variant_a_percentage}% / B: {row.original.variant_b_percentage}%
+          </div>
+        ),
+      },
+      {
+        accessorKey: 'description',
+        header: 'Description',
+        cell: ({ row }) => (
+          <div className="text-sm text-muted-foreground max-w-md truncate">
+            {row.original.description || '-'}
+          </div>
+        ),
+      },
+      {
+        accessorKey: 'created_at',
+        header: 'Created',
+        cell: ({ row }) => (
+          <div className="text-sm text-muted-foreground">
+            {new Date(row.original.created_at).toLocaleDateString()}
+          </div>
+        ),
+      },
+      {
+        id: 'actions',
+        header: 'Actions',
+        cell: ({ row }) => (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => router.push(`/experiments/${row.original.id}/assignments`)}
+            >
+              <Eye className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleEdit(row.original)}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setDeleteConfirm({ open: true, experiment: row.original })}
+            >
+              <Trash2 className="h-4 w-4 text-destructive" />
+            </Button>
+          </div>
+        ),
+      },
+    ],
+    [flags, router]
+  );
+
+  const table = useReactTable({
+    data: experiments,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    globalFilterFn: 'includesString',
+    state: {
+      globalFilter,
+    },
+    onGlobalFilterChange: setGlobalFilter,
+  });
 
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="mb-8 flex justify-between items-center">
+    <div className="container mx-auto px-4 py-8 space-y-6">
+      <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Experiments</h1>
-          <p className="mt-2 text-gray-600">Manage your A/B experiments</p>
+          <h1 className="text-3xl font-bold tracking-tight">Experiments</h1>
+          <p className="text-muted-foreground mt-2">Manage your A/B experiments</p>
         </div>
-        <button
-          onClick={handleCreate}
-          className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-        >
-          <PlusIcon className="h-5 w-5 mr-2" />
+        <Button onClick={handleCreate}>
+          <Plus className="h-4 w-4 mr-2" />
           Create Experiment
-        </button>
+        </Button>
       </div>
 
       {error && (
-        <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+        <div className="bg-destructive/10 border border-destructive text-destructive px-4 py-3 rounded-md">
           {error}
         </div>
       )}
 
-      <div className="bg-white shadow overflow-hidden sm:rounded-md">
-        {experiments.length === 0 ? (
-          <div className="px-6 py-8 text-center text-gray-500">
-            No experiments found. Create your first experiment to get started.
-          </div>
-        ) : (
-          <ul className="divide-y divide-gray-200">
-            {experiments.map((experiment) => (
-              <li key={experiment.id} className="px-6 py-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center">
-                      <h3 className="text-lg font-medium text-gray-900">{experiment.name}</h3>
-                      <span
-                        className={`ml-3 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
-                          experiment.status
-                        )}`}
-                      >
-                        {experiment.status}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-sm text-gray-500">
-                      Flag: {getFlagName(experiment.flag_id)}
-                    </p>
-                    {experiment.description && (
-                      <p className="mt-1 text-sm text-gray-600">{experiment.description}</p>
-                    )}
-                    <div className="mt-2 flex items-center space-x-4 text-xs text-gray-500">
-                      <span>Variant A: {experiment.variant_a_percentage}%</span>
-                      <span>Variant B: {experiment.variant_b_percentage}%</span>
-                    </div>
-                    <p className="mt-1 text-xs text-gray-400">
-                      Created: {new Date(experiment.created_at).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() => router.push(`/experiments/${experiment.id}/assignments`)}
-                      className="inline-flex items-center px-3 py-1.5 border border-blue-300 rounded-md text-sm font-medium text-blue-700 bg-white hover:bg-blue-50"
-                    >
-                      View Assignments
-                    </button>
-                    <button
-                      onClick={() => handleEdit(experiment)}
-                      className="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-                    >
-                      <PencilIcon className="h-4 w-4 mr-1" />
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleDelete(experiment.id)}
-                      className="inline-flex items-center px-3 py-1.5 border border-red-300 rounded-md text-sm font-medium text-red-700 bg-white hover:bg-red-50"
-                    >
-                      <TrashIcon className="h-4 w-4 mr-1" />
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
+      <div className="flex items-center gap-4">
+        <Input
+          placeholder="Search experiments..."
+          value={globalFilter}
+          onChange={(e) => setGlobalFilter(e.target.value)}
+          className="max-w-sm"
+        />
       </div>
 
-      {isModalOpen && (
-        <ExperimentModal
+      <div className="border rounded-lg">
+        <Table>
+          <TableHeader>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <TableHead key={header.id}>
+                    {header.isPlaceholder
+                      ? null
+                      : flexRender(header.column.columnDef.header, header.getContext())}
+                  </TableHead>
+                ))}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows?.length ? (
+              table.getRowModel().rows.map((row) => (
+                <TableRow key={row.id} data-state={row.getIsSelected() && 'selected'}>
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell key={cell.id}>
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={columns.length} className="h-24 text-center">
+                  No experiments found. Create your first experiment to get started.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-muted-foreground">
+          Showing {table.getState().pagination.pageIndex * table.getState().pagination.pageSize + 1} to{' '}
+          {Math.min(
+            (table.getState().pagination.pageIndex + 1) * table.getState().pagination.pageSize,
+            experiments.length
+          )}{' '}
+          of {experiments.length} experiments
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => table.previousPage()}
+            disabled={!table.getCanPreviousPage()}
+          >
+            Previous
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => table.nextPage()}
+            disabled={!table.getCanNextPage()}
+          >
+            Next
+          </Button>
+        </div>
+      </div>
+
+      {isDialogOpen && (
+        <ExperimentDialog
           experiment={editingExperiment}
           flags={flags}
-          isOpen={isModalOpen}
-          onClose={handleModalClose}
+          isOpen={isDialogOpen}
+          onClose={handleDialogClose}
         />
       )}
+
+      <ConfirmDialog
+        open={deleteConfirm.open}
+        onOpenChange={(open) => setDeleteConfirm({ open, experiment: null })}
+        onConfirm={handleDelete}
+        title="Delete Experiment"
+        description={`Are you sure you want to delete "${deleteConfirm.experiment?.name}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="destructive"
+      />
     </div>
   );
 }
-

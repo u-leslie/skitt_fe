@@ -1,9 +1,30 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { experimentsApi, Experiment } from '@/lib/api';
-import { ArrowLeftIcon } from '@heroicons/react/24/outline';
+import { Button } from '@/components/ui/button';
+import { ArrowLeft } from 'lucide-react';
+import {
+  useReactTable,
+  getCoreRowModel,
+  getPaginationRowModel,
+  getSortedRowModel,
+  getFilteredRowModel,
+  ColumnDef,
+  flexRender,
+} from '@tanstack/react-table';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { toast } from 'sonner';
 
 interface Assignment {
   id: string;
@@ -29,6 +50,7 @@ export default function ExperimentAssignmentsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [stats, setStats] = useState({ variantA: 0, variantB: 0, total: 0 });
+  const [globalFilter, setGlobalFilter] = useState('');
 
   useEffect(() => {
     fetchData();
@@ -44,7 +66,6 @@ export default function ExperimentAssignmentsPage() {
       setExperiment(experimentRes.data);
       setAssignments(assignmentsRes.data);
       
-      // Calculate stats
       const variantA = assignmentsRes.data.filter((a: Assignment) => a.variant === 'A').length;
       const variantB = assignmentsRes.data.filter((a: Assignment) => a.variant === 'B').length;
       setStats({
@@ -55,172 +76,190 @@ export default function ExperimentAssignmentsPage() {
       setError(null);
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to load data');
+      toast.error('Failed to load assignments');
     } finally {
       setLoading(false);
     }
   };
 
+  const columns = useMemo<ColumnDef<Assignment>[]>(
+    () => [
+      {
+        accessorKey: 'user.name',
+        header: 'User',
+        cell: ({ row }) => (
+          <div className="font-medium">
+            {row.original.user?.name || 'Unnamed User'}
+          </div>
+        ),
+      },
+      {
+        accessorKey: 'user.email',
+        header: 'Email',
+        cell: ({ row }) => (
+          <div className="text-sm">{row.original.user?.email || '-'}</div>
+        ),
+      },
+      {
+        accessorKey: 'variant',
+        header: 'Variant',
+        cell: ({ row }) => (
+          <Badge variant={row.original.variant === 'A' ? 'default' : 'secondary'}>
+            Variant {row.original.variant}
+          </Badge>
+        ),
+      },
+      {
+        accessorKey: 'created_at',
+        header: 'Assigned At',
+        cell: ({ row }) => (
+          <div className="text-sm text-muted-foreground">
+            {new Date(row.original.created_at).toLocaleString()}
+          </div>
+        ),
+      },
+    ],
+    []
+  );
+
+  const table = useReactTable({
+    data: assignments,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    globalFilterFn: 'includesString',
+    state: {
+      globalFilter,
+    },
+    onGlobalFilterChange: setGlobalFilter,
+  });
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <button
+    <div className="container mx-auto px-4 py-8 space-y-6">
+      <Button
+        variant="ghost"
         onClick={() => router.back()}
-        className="mb-4 inline-flex items-center text-sm text-gray-600 hover:text-gray-900"
+        className="mb-4"
       >
-        <ArrowLeftIcon className="h-4 w-4 mr-1" />
+        <ArrowLeft className="h-4 w-4 mr-2" />
         Back to Experiments
-      </button>
+      </Button>
 
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">
           {experiment?.name} - User Assignments
         </h1>
-        <p className="mt-2 text-gray-600">
+        <p className="text-muted-foreground mt-2">
           View which users are assigned to which variant
         </p>
       </div>
 
       {error && (
-        <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+        <div className="bg-destructive/10 border border-destructive text-destructive px-4 py-3 rounded-md">
           {error}
         </div>
       )}
 
       {/* Stats */}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-3 mb-8">
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0 bg-blue-500 rounded-md p-3">
-                <span className="text-white font-bold">A</span>
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">
-                    Variant A
-                  </dt>
-                  <dd className="text-3xl font-semibold text-gray-900">
-                    {stats.variantA}
-                  </dd>
-                  <dd className="text-sm text-gray-500">
-                    {stats.total > 0 ? Math.round((stats.variantA / stats.total) * 100) : 0}%
-                  </dd>
-                </dl>
-              </div>
-            </div>
-          </div>
-        </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Variant A</CardTitle>
+            <Badge variant="default">A</Badge>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.variantA}</div>
+            <p className="text-xs text-muted-foreground">
+              {stats.total > 0 ? Math.round((stats.variantA / stats.total) * 100) : 0}% of total
+            </p>
+          </CardContent>
+        </Card>
 
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0 bg-green-500 rounded-md p-3">
-                <span className="text-white font-bold">B</span>
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">
-                    Variant B
-                  </dt>
-                  <dd className="text-3xl font-semibold text-gray-900">
-                    {stats.variantB}
-                  </dd>
-                  <dd className="text-sm text-gray-500">
-                    {stats.total > 0 ? Math.round((stats.variantB / stats.total) * 100) : 0}%
-                  </dd>
-                </dl>
-              </div>
-            </div>
-          </div>
-        </div>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Variant B</CardTitle>
+            <Badge variant="secondary">B</Badge>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.variantB}</div>
+            <p className="text-xs text-muted-foreground">
+              {stats.total > 0 ? Math.round((stats.variantB / stats.total) * 100) : 0}% of total
+            </p>
+          </CardContent>
+        </Card>
 
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0 bg-purple-500 rounded-md p-3">
-                <span className="text-white font-bold">T</span>
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">
-                    Total Users
-                  </dt>
-                  <dd className="text-3xl font-semibold text-gray-900">
-                    {stats.total}
-                  </dd>
-                </dl>
-              </div>
-            </div>
-          </div>
-        </div>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Users</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.total}</div>
+            <p className="text-xs text-muted-foreground">Total assignments</p>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Assignments Table */}
-      <div className="bg-white shadow overflow-hidden sm:rounded-md">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h2 className="text-xl font-semibold text-gray-900">User Assignments</h2>
-        </div>
-        {assignments.length === 0 ? (
-          <div className="px-6 py-8 text-center text-gray-500">
-            No users assigned yet. Users will be automatically assigned when they interact with the flag.
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    User
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Email
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Variant
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Assigned At
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {assignments.map((assignment) => (
-                  <tr key={assignment.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {assignment.user?.name || 'Unnamed User'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {assignment.user?.email || '-'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          assignment.variant === 'A'
-                            ? 'bg-blue-100 text-blue-800'
-                            : 'bg-green-100 text-green-800'
-                        }`}
-                      >
-                        Variant {assignment.variant}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(assignment.created_at).toLocaleString()}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>User Assignments</CardTitle>
+          <CardDescription>All users assigned to this experiment</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {assignments.length === 0 ? (
+            <div className="text-center text-muted-foreground py-8">
+              No users assigned yet. Users will be automatically assigned when they interact with the flag.
+            </div>
+          ) : (
+            <div className="border rounded-lg">
+              <Table>
+                <TableHeader>
+                  {table.getHeaderGroups().map((headerGroup) => (
+                    <TableRow key={headerGroup.id}>
+                      {headerGroup.headers.map((header) => (
+                        <TableHead key={header.id}>
+                          {header.isPlaceholder
+                            ? null
+                            : flexRender(header.column.columnDef.header, header.getContext())}
+                        </TableHead>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableHeader>
+                <TableBody>
+                  {table.getRowModel().rows?.length ? (
+                    table.getRowModel().rows.map((row) => (
+                      <TableRow key={row.id}>
+                        {row.getVisibleCells().map((cell) => (
+                          <TableCell key={cell.id}>
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={columns.length} className="h-24 text-center">
+                        No assignments found
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
-
