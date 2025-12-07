@@ -11,6 +11,7 @@ const Navbar = () => {
     { href: '/flags', label: 'Feature Flags' },
     { href: '/users', label: 'Users' },
     { href: '/experiments', label: 'Experiments' },
+    { href: '/test-variant', label: 'Test Variant' },
   ];
 
   return (

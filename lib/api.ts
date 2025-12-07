@@ -148,6 +148,9 @@ export const experimentsApi = {
   create: (data: CreateExperimentInput) => api.post<Experiment>('/experiments', data),
   update: (id: string, data: UpdateExperimentInput) => api.put<Experiment>(`/experiments/${id}`, data),
   delete: (id: string) => api.delete(`/experiments/${id}`),
+  getAssignments: (experimentId: string) => api.get(`/experiments/${experimentId}/assignments`),
+  assignUser: (experimentId: string, userId: string) => api.post(`/experiments/${experimentId}/assign/${userId}`),
+  evaluateFlag: (flagId: string, userId: string) => api.get(`/flags/${flagId}/evaluate/${userId}`),
 };
 
 // Metrics API

@@ -1,11 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { experimentsApi, featureFlagsApi, Experiment, FeatureFlag, CreateExperimentInput } from '@/lib/api';
 import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
 import ExperimentModal from '@/components/ExperimentModal';
 
 export default function ExperimentsPage() {
+  const router = useRouter();
   const [experiments, setExperiments] = useState<Experiment[]>([]);
   const [flags, setFlags] = useState<FeatureFlag[]>([]);
   const [loading, setLoading] = useState(true);
@@ -147,6 +149,12 @@ export default function ExperimentsPage() {
                     </p>
                   </div>
                   <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => router.push(`/experiments/${experiment.id}/assignments`)}
+                      className="inline-flex items-center px-3 py-1.5 border border-blue-300 rounded-md text-sm font-medium text-blue-700 bg-white hover:bg-blue-50"
+                    >
+                      View Assignments
+                    </button>
                     <button
                       onClick={() => handleEdit(experiment)}
                       className="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
