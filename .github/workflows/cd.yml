@@ -60,3 +60,33 @@ jobs:
 
       - name: Image digest
         run: echo "Image pushed with digest ${{ steps.meta.outputs.digest }}"
+
+      - name: Scan Docker image with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
+          format: "sarif"
+          output: "trivy-image-results.sarif"
+          severity: "CRITICAL,HIGH"
+
+      - name: Upload Trivy image scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        continue-on-error: true
+        with:
+          sarif_file: "trivy-image-results.sarif"
+
+      - name: Deploy frontend
+        if: github.ref == 'refs/heads/main'
+        run: |
+          echo "🚀 Deploying frontend to production..."
+          echo "📦 Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}"
+          echo "💡 Configure your deployment here:"
+          echo "   - SSH to server"
+          echo "   - Pull latest image"
+          echo "   - Restart containers"
+          echo "   - Health check"
+          # Example deployment commands (uncomment and configure):
+          # ssh user@server "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main"
+          # ssh user@server "cd /app && docker-compose up -d frontend"
+          # ssh user@server "curl -f http://localhost:4000 || exit 1"
