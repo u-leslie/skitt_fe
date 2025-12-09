@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  # Frontend Next.js App (Development mode with hot reload)
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    container_name: skitt-frontend-dev
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+      PORT: 4000
+    ports:
+      - "4000:4000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    command: npm run dev
+    networks:
+      - skitt-network-dev
+
+networks:
+  skitt-network-dev:
+    driver: bridge
+
