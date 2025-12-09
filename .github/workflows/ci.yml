@@ -39,3 +39,28 @@ jobs:
             exit 1
           fi
           echo "✅ Build successful: .next directory exists"
+
+      - name: Run tests
+        run: |
+          if [ -f "package.json" ] && grep -q '"test"' package.json; then
+            npm test
+          else
+            echo "⚠️  No tests configured. Skipping test step."
+            echo "💡 Add a 'test' script to package.json to enable tests."
+          fi
+
+      - name: Security scan with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "fs"
+          scan-ref: "."
+          format: "sarif"
+          output: "trivy-results.sarif"
+          severity: "CRITICAL,HIGH"
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        continue-on-error: true
+        with:
+          sarif_file: "trivy-results.sarif"
