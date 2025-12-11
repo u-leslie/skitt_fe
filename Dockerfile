@@ -15,6 +15,7 @@ WORKDIR /app
 
 # Accept build argument for API URL
 ARG NEXT_PUBLIC_API_URL
+# Set as environment variable for Next.js build
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
 # Copy dependencies from deps stage
@@ -28,6 +29,9 @@ RUN mkdir -p public
 
 # Set build-time environment variable
 ENV NEXT_TELEMETRY_DISABLED=1
+
+# Verify the environment variable is set before build
+RUN echo "Building with NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL"
 
 # Build Next.js application
 RUN npm run build
