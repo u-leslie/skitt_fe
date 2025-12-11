@@ -27,14 +27,18 @@ COPY . .
 # Create public directory if it doesn't exist
 RUN mkdir -p public
 
+# Remove any .env files that might override our build arg
+RUN rm -f .env .env.local .env.production .env.production.local
+
 # Set build-time environment variable
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # Verify the environment variable is set before build
-RUN echo "Building with NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL"
+RUN echo "Building with NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL" && \
+  echo "NEXT_PUBLIC_API_URL value: $NEXT_PUBLIC_API_URL"
 
-# Build Next.js application
-RUN npm run build
+# Build Next.js application with the environment variable
+RUN NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL npm run build
 
 # Stage 3: Production
 FROM node:18-alpine AS runner
