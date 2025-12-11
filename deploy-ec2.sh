@@ -20,10 +20,16 @@ if ! docker info > /dev/null 2>&1; then
     exit 1
 fi
 
-# Build and start container
-echo "📦 Building frontend container..."
-docker-compose -f docker-compose.prod.yml build
+# Load environment variables
+set -a
+source .env
+set +a
 
+# Build using docker directly (more reliable than docker-compose build)
+echo "📦 Building frontend container..."
+docker build -t skitt-frontend:latest --target runner -f Dockerfile .
+
+# Start using docker-compose (it will use the built image)
 echo "🚀 Starting frontend service..."
 docker-compose -f docker-compose.prod.yml up -d
 

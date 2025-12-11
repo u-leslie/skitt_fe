@@ -7,11 +7,15 @@ COPY package.json package-lock.json ./
 
 # Install dependencies
 RUN npm ci && \
-    npm cache clean --force
+  npm cache clean --force
 
 # Stage 2: Builder
 FROM node:18-alpine AS builder
 WORKDIR /app
+
+# Accept build argument for API URL
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
 # Copy dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
@@ -37,7 +41,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 
 # Create non-root user
 RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nextjs
+  adduser --system --uid 1001 nextjs
 
 # Copy public assets (create directory first, then copy if exists)
 RUN mkdir -p ./public
