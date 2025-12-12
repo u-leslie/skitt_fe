@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: skitt-prod
+  labels:
+    environment: production
+    app: skitt
